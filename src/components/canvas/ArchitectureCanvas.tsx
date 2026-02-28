@@ -1,10 +1,9 @@
 "use client";
 
-import { useMemo, useEffect, useState } from "react";
+import { useMemo, useEffect } from "react";
 import ReactFlow, {
     Background,
     Controls,
-    MiniMap,
     useNodesState,
     useEdgesState,
     Panel,
@@ -14,42 +13,36 @@ import "reactflow/dist/style.css";
 import { Download, Loader2 } from "lucide-react";
 import { nodeTypes } from "./CustomNodes";
 import SummaryPanel from "./SummaryPanel";
-import { io } from "socket.io-client";
 import { toPng } from "html-to-image";
 
 const initialNodes = [
     { id: "intro", position: { x: 250, y: 250 }, data: { label: "Architecture Canvas" }, type: "ServiceNode" }
 ];
 
-function CanvasInner({ isGenerating }: { isGenerating: boolean }) {
+type ArchitectureData = {
+    nodes: any[];
+    edges: any[];
+    summary: any;
+} | null;
+
+function CanvasInner({ isGenerating, architecture }: { isGenerating: boolean; architecture: ArchitectureData }) {
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes as any);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-    const [summary, setSummary] = useState<any>(null);
 
     const memoizedNodeTypes = useMemo(() => nodeTypes, []);
 
+    // Update canvas whenever architecture prop changes
     useEffect(() => {
-        const socket = io("http://localhost:3001");
-
-        socket.on("generate_canvas_success", (data: any) => {
-            if (data.nodes) setNodes(data.nodes);
-            if (data.edges) setEdges(data.edges);
-            if (data.summary) setSummary(data.summary);
-        });
-
-        return () => {
-            socket.disconnect();
-        };
-    }, [setNodes, setEdges]);
+        if (!architecture) return;
+        if (architecture.nodes) setNodes(architecture.nodes);
+        if (architecture.edges) setEdges(architecture.edges);
+    }, [architecture, setNodes, setEdges]);
 
     const onExportClick = () => {
         const rfElement = document.querySelector('.react-flow') as HTMLElement;
         if (rfElement) {
             toPng(rfElement, {
-                filter: (node) => {
-                    // exclude panel controls from image
-                    return !(node.classList && node.classList.contains('react-flow__panel'));
-                },
+                filter: (node) => !(node.classList && node.classList.contains('react-flow__panel')),
             }).then((dataUrl) => {
                 const a = document.createElement('a');
                 a.setAttribute('download', 'architecture.png');
@@ -65,16 +58,18 @@ function CanvasInner({ isGenerating }: { isGenerating: boolean }) {
             <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-blue-600/10 blur-[120px] pointer-events-none" />
             <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full bg-indigo-600/10 blur-[120px] pointer-events-none" />
 
-            {isGenerating && !summary ? (
+            {isGenerating && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0a0f1d]/60 backdrop-blur-md z-50 transition-all duration-500">
                     <div className="relative">
                         <div className="absolute inset-0 rounded-full blur-xl bg-blue-500/30 animate-pulse"></div>
                         <Loader2 className="h-14 w-14 text-blue-400 animate-spin relative z-10" />
                     </div>
                     <h3 className="text-2xl font-semibold text-white mt-6 tracking-tight">Architecting System...</h3>
-                    <p className="text-blue-200/60 mt-2 text-sm max-w-sm text-center font-medium">DevArchitect AI is connecting components and designing your system blueprint.</p>
+                    <p className="text-blue-200/60 mt-2 text-sm max-w-sm text-center font-medium">
+                        DevArchitect AI is connecting components and designing your system blueprint.
+                    </p>
                 </div>
-            ) : null}
+            )}
 
             <div className="flex-1 relative pb-12">
                 <ReactFlow
@@ -104,15 +99,15 @@ function CanvasInner({ isGenerating }: { isGenerating: boolean }) {
                 </ReactFlow>
             </div>
 
-            <SummaryPanel summary={summary} />
+            <SummaryPanel summary={architecture?.summary ?? null} />
         </div>
     );
 }
 
-export default function ArchitectureCanvas({ isGenerating }: { isGenerating: boolean }) {
+export default function ArchitectureCanvas({ isGenerating, architecture }: { isGenerating: boolean; architecture: ArchitectureData }) {
     return (
         <ReactFlowProvider>
-            <CanvasInner isGenerating={isGenerating} />
+            <CanvasInner isGenerating={isGenerating} architecture={architecture} />
         </ReactFlowProvider>
-    )
+    );
 }

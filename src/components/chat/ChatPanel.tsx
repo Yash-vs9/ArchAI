@@ -13,8 +13,11 @@ type QuestionData = {
     options?: string[];
 };
 
-export default function ChatPanel({ onCanvasGenerateStart, onCanvasGenerateEnd }: { onCanvasGenerateStart: () => void, onCanvasGenerateEnd?: () => void }) {
-    const [messages, setMessages] = useState<{ id: string; role: "agent" | "user"; text: string }[]>([]);
+export default function ChatPanel({ onCanvasGenerateStart, onCanvasGenerateEnd, onArchitectureUpdate }: { 
+    onCanvasGenerateStart: () => void, 
+    onCanvasGenerateEnd?: () => void,
+    onArchitectureUpdate?: (data: any) => void
+}) {    const [messages, setMessages] = useState<{ id: string; role: "agent" | "user"; text: string }[]>([]);
     const [isConnected, setIsConnected] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
 
@@ -78,8 +81,9 @@ export default function ChatPanel({ onCanvasGenerateStart, onCanvasGenerateEnd }
             onCanvasGenerateStart();
         });
 
-        socket.on("generate_canvas_success", () => {
+        socket.on("generate_canvas_success", (data: any) => {
             onCanvasGenerateEnd?.();
+            onArchitectureUpdate?.(data);
         });
 
         socket.on("generate_canvas_error", () => {

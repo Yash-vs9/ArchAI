@@ -1,7 +1,7 @@
 "use client";
 
 import { useSession, signIn, signOut } from "next-auth/react";
-import { useCallback, useState } from "react";
+import { useState, useCallback } from "react";
 import ChatPanel from "@/components/chat/ChatPanel";
 import ArchitectureCanvas from "@/components/canvas/ArchitectureCanvas";
 import { motion } from "framer-motion";
@@ -12,9 +12,15 @@ import { ParticlesBackground } from "@/components/ui/ParticlesBackground";
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const [isGenerating, setIsGenerating] = useState(false);
+  const [architecture, setArchitecture] = useState<any>(null);
+
   const handleCanvasGenerateStart = useCallback(() => setIsGenerating(true), []);
   const handleCanvasGenerateEnd = useCallback(() => setIsGenerating(false), []);
-  
+  const handleArchitectureUpdate = useCallback((data: any) => {
+    setArchitecture(data);
+    setIsGenerating(false);
+  }, []);
+
   if (status === "loading") {
     return (
       <div className="flex h-screen items-center justify-center bg-black">
@@ -36,18 +42,12 @@ export default function DashboardPage() {
         <div className="absolute inset-0 z-0">
           <div className="absolute inset-0 bg-[linear-gradient(to_right,#4f4f4f2e_1px,transparent_1px),linear-gradient(to_bottom,#4f4f4f2e_1px,transparent_1px)] bg-[size:14px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]"></div>
           <motion.div
-            animate={{
-              scale: [1, 1.2, 1],
-              opacity: [0.3, 0.5, 0.3]
-            }}
+            animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
             transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
             className="absolute top-[20%] left-[20%] h-96 w-96 rounded-full bg-blue-500/20 blur-[120px]"
           />
           <motion.div
-            animate={{
-              scale: [1, 1.3, 1],
-              opacity: [0.2, 0.4, 0.2]
-            }}
+            animate={{ scale: [1, 1.3, 1], opacity: [0.2, 0.4, 0.2] }}
             transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 1 }}
             className="absolute bottom-[20%] right-[20%] h-96 w-96 rounded-full bg-purple-500/20 blur-[120px]"
           />
@@ -126,15 +126,16 @@ export default function DashboardPage() {
 
         {/* Left Panel: Chat Interview */}
         <section className="relative z-10 w-full md:w-[400px] lg:w-[450px] border-r border-white/5 bg-black/40 backdrop-blur-xl flex flex-col shadow-2xl">
-        <ChatPanel
-  onCanvasGenerateStart={handleCanvasGenerateStart}
-  onCanvasGenerateEnd={handleCanvasGenerateEnd}
-/>
+          <ChatPanel
+            onCanvasGenerateStart={handleCanvasGenerateStart}
+            onCanvasGenerateEnd={handleCanvasGenerateEnd}
+            onArchitectureUpdate={handleArchitectureUpdate}
+          />
         </section>
 
         {/* Right Panel: Architecture Canvas */}
         <section className="relative z-10 flex-1 bg-transparent">
-          <ArchitectureCanvas isGenerating={isGenerating} />
+          <ArchitectureCanvas isGenerating={isGenerating} architecture={architecture} />
         </section>
       </main>
     </div>
