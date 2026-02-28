@@ -184,16 +184,8 @@ export async function processInterviewStep(
             const updated = await updateArchitecture(state.currentArchitecture, userMessage || "");
             state.currentArchitecture = updated;
 
-            state.messages.push({
-                role: 'user',
-                content: `The user requested: "${userMessage}". The architecture has been updated accordingly. Provide a brief 1-2 sentence confirmation to the user acknowledging the change.`
-            });
-
-            const agentReply = await callGroq(state.messages, 0.7);
-            state.messages.push({ role: 'assistant', content: agentReply });
-
             return {
-                text: agentReply,
+                text: "Done! I've updated the architecture based on your request.",
                 isComplete: true,
                 answers: state.answers,
                 architecture: updated,
@@ -242,8 +234,11 @@ export async function processInterviewStep(
     state.messages.push({ role: 'user', content: systemPrompt });
 
     try {
-        const fullText = await callGroqStream(state.messages, 0.7);
-        state.step++;
+        const trimmedMessages = [
+            state.messages[0],
+            ...state.messages.slice(-6)
+        ];
+        const fullText = await callGroqStream(trimmedMessages, 0.7);        state.step++;
         state.messages.push({ role: 'assistant', content: fullText });
 
         return {
