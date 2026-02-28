@@ -305,3 +305,6 @@ export function restoreSession(userId: string, frontendMessages: any[]) {
         console.error("Failed to restore session chat history:", e);
     }
 }
+export function getSession(userId: string): InterviewState | undefined {
+    return sessions.get(userId);
+}

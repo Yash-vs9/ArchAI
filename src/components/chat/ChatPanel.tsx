@@ -13,11 +13,13 @@ type QuestionData = {
     options?: string[];
 };
 
-export default function ChatPanel({ onCanvasGenerateStart, onCanvasGenerateEnd, onArchitectureUpdate }: { 
+export default function ChatPanel({ onCanvasGenerateStart, onCanvasGenerateEnd, onArchitectureUpdate, onSocketReady }: { 
     onCanvasGenerateStart: () => void, 
     onCanvasGenerateEnd?: () => void,
-    onArchitectureUpdate?: (data: any) => void
-}) {    const [messages, setMessages] = useState<{ id: string; role: "agent" | "user"; text: string }[]>([]);
+    onArchitectureUpdate?: (data: any) => void,
+    onSocketReady?: (socket: any, sessionId: string) => void
+})
+{    const [messages, setMessages] = useState<{ id: string; role: "agent" | "user"; text: string }[]>([]);
     const [isConnected, setIsConnected] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
 
@@ -50,6 +52,7 @@ export default function ChatPanel({ onCanvasGenerateStart, onCanvasGenerateEnd, 
             query: { sessionId }
         });
         socketRef.current = socket;
+        onSocketReady?.(socket, sessionId); // 👈 add this line
 
         socket.on("connect", () => {
             setIsConnected(true);
@@ -80,7 +83,7 @@ export default function ChatPanel({ onCanvasGenerateStart, onCanvasGenerateEnd, 
         socket.on("generate_canvas_start", () => {
             onCanvasGenerateStart();
         });
-
+                    
         socket.on("generate_canvas_success", (data: any) => {
             onCanvasGenerateEnd?.();
             onArchitectureUpdate?.(data);
@@ -97,7 +100,7 @@ export default function ChatPanel({ onCanvasGenerateStart, onCanvasGenerateEnd, 
         return () => {
             socket.disconnect();
         };
-    }, [onCanvasGenerateStart, onCanvasGenerateEnd]);
+    }, []);
 
     useEffect(() => {
         if (!currentQuestion) {
@@ -123,8 +126,13 @@ export default function ChatPanel({ onCanvasGenerateStart, onCanvasGenerateEnd, 
         setIsTyping(true);
 
         const sessionId = localStorage.getItem("archai_session");
-        socketRef.current.emit("user_message", { sessionId, text: textValue });
-    };
+        const userMessages = messages.filter(m => m.role === "user").length + 1;
+        socketRef.current.emit("user_message", { 
+            sessionId, 
+            text: textValue,
+            currentStep: userMessages
+        });
+            };
 
     const renderDynamicInput = () => {
         if (!currentQuestion) return null;

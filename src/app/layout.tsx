@@ -6,7 +6,7 @@ import AuthProvider from "@/components/AuthProvider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "DevArchitect AI",
+  title: "Arch AI",
   description: "Agentic Project Planning & Visual Architecture Tool",
 };
 

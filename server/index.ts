@@ -24,7 +24,7 @@ const io = new Server(httpServer, {
     }
 });
 
-// Total number of interview questions — used to detect the final answer
+// Total number of interview questions
 const TOTAL_QUESTIONS = 14;
 
 io.on('connection', (socket) => {
@@ -33,7 +33,6 @@ io.on('connection', (socket) => {
     socket.on('start_interview', async (data) => {
         try {
             const { processInterviewStep, clearSession } = await import('./agents/interviewAgent');
-            // Use sessionId from client if provided, otherwise fall back to socket.id
             const sessionId = data?.sessionId || socket.id;
             clearSession(sessionId);
             const response = await processInterviewStep(sessionId, null);
@@ -78,8 +77,6 @@ io.on('connection', (socket) => {
             const { processInterviewStep } = await import('./agents/interviewAgent');
             const sessionId = data.sessionId || socket.id;
 
-            // Detect if this is the final answer so we can emit generate_canvas_start
-            // BEFORE awaiting generation (which happens inside processInterviewStep)
             const isFinalAnswer = data.currentStep >= TOTAL_QUESTIONS;
             if (isFinalAnswer) {
                 socket.emit('generate_canvas_start');
@@ -105,7 +102,6 @@ io.on('connection', (socket) => {
 
             if (response.isComplete && response.architecture) {
                 if (response.isUpdate) {
-                    // Follow-up modification
                     socket.emit('generate_canvas_start');
                     socket.emit('agent_message', {
                         text: response.text,
@@ -113,11 +109,9 @@ io.on('connection', (socket) => {
                         questionData: response.questionData
                     });
                 }
-                // Emit the architecture data to the canvas
                 socket.emit('generate_canvas_success', response.architecture);
 
             } else if (response.isComplete && !response.architecture) {
-                // Generation failed
                 console.error("Generation returned isComplete but no architecture");
                 socket.emit('generate_canvas_error');
                 socket.emit('agent_message', {
@@ -127,7 +121,6 @@ io.on('connection', (socket) => {
                 });
 
             } else {
-                // Normal interview step
                 socket.emit('agent_message', {
                     text: response.text,
                     isComplete: response.isComplete,
@@ -139,6 +132,32 @@ io.on('connection', (socket) => {
             console.error("Error processing message:", error);
             socket.emit('agent_message', { text: "Error processing your answer." });
             socket.emit('generate_canvas_error');
+        }
+    });
+
+    // On-demand guide generation
+    socket.on('generate_guide', async (data) => {
+        console.log('Guide generation requested for session:', data.sessionId);
+        try {
+            const { generateGuide } = await import('./agents/architectureGenerator');
+            const { getSession } = await import('./agents/interviewAgent');
+
+            const sessionId = data.sessionId;
+            const session = getSession(sessionId);
+
+            if (!session || !session.currentArchitecture) {
+                socket.emit('guide_error', { message: "No architecture found. Please generate an architecture first." });
+                return;
+            }
+
+            socket.emit('guide_start');
+
+            const guide = await generateGuide(session.answers, session.currentArchitecture);
+            socket.emit('guide_success', { guide });
+
+        } catch (error) {
+            console.error("Guide generation failed:", error);
+            socket.emit('guide_error', { message: "Failed to generate guide. Please try again." });
         }
     });
 

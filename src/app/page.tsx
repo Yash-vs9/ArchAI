@@ -1,24 +1,69 @@
 "use client";
 
 import { useSession, signIn, signOut } from "next-auth/react";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import ChatPanel from "@/components/chat/ChatPanel";
 import ArchitectureCanvas from "@/components/canvas/ArchitectureCanvas";
+import GuidePanel from "@/components/canvas/GuidePanel";
 import { motion } from "framer-motion";
-import { Sparkles, Hexagon } from "lucide-react";
+import { Sparkles, Hexagon, Network, BookOpen } from "lucide-react";
 import { CursorSpotlight } from "@/components/ui/CursorSpotlight";
 import { ParticlesBackground } from "@/components/ui/ParticlesBackground";
+import { io } from "socket.io-client";
+
+type Tab = "canvas" | "guide";
 
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const [isGenerating, setIsGenerating] = useState(false);
   const [architecture, setArchitecture] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<Tab>("canvas");
+
+  // Guide state
+  const [guide, setGuide] = useState<string | null>(null);
+  const [isGuideLoading, setIsGuideLoading] = useState(false);
+  const [guideError, setGuideError] = useState<string | null>(null);
+
+  const socketRef = useRef<any>(null);
+  const sessionIdRef = useRef<string | null>(null);
 
   const handleCanvasGenerateStart = useCallback(() => setIsGenerating(true), []);
   const handleCanvasGenerateEnd = useCallback(() => setIsGenerating(false), []);
+
   const handleArchitectureUpdate = useCallback((data: any) => {
     setArchitecture(data);
     setIsGenerating(false);
+    // Reset guide when architecture changes so user generates a fresh one
+    setGuide(null);
+    setGuideError(null);
+  }, []);
+
+  const handleSocketReady = useCallback((socket: any, sessionId: string) => {
+    socketRef.current = socket;
+    sessionIdRef.current = sessionId;
+
+    socket.on("guide_start", () => {
+      setIsGuideLoading(true);
+      setGuideError(null);
+    });
+
+    socket.on("guide_success", (data: { guide: string }) => {
+      setGuide(data.guide);
+      setIsGuideLoading(false);
+    });
+
+    socket.on("guide_error", (data: { message: string }) => {
+      setGuideError(data.message || "Failed to generate guide.");
+      setIsGuideLoading(false);
+    });
+  }, []);
+
+  const handleRequestGuide = useCallback(() => {
+    if (!socketRef.current || !sessionIdRef.current) return;
+    setGuide(null);
+    setGuideError(null);
+    setActiveTab("guide");
+    socketRef.current.emit("generate_guide", { sessionId: sessionIdRef.current });
   }, []);
 
   if (status === "loading") {
@@ -70,7 +115,7 @@ export default function DashboardPage() {
             transition={{ duration: 0.5, delay: 0.1 }}
             className="bg-gradient-to-br from-white to-neutral-400 bg-clip-text text-5xl font-bold tracking-tight text-transparent sm:text-7xl mb-6"
           >
-            DevArchitect AI
+            Arch AI
           </motion.h1>
 
           <motion.p
@@ -107,7 +152,7 @@ export default function DashboardPage() {
               <Hexagon className="h-4 w-4 text-blue-400" />
             </div>
           </div>
-          <span className="font-semibold tracking-tight text-white/90">DevArchitect</span>
+          <span className="font-semibold tracking-tight text-white/90">ArchAI</span>
         </div>
         <div className="flex items-center gap-4">
           <span className="text-sm font-medium text-white/50">{session.user?.email}</span>
@@ -130,12 +175,64 @@ export default function DashboardPage() {
             onCanvasGenerateStart={handleCanvasGenerateStart}
             onCanvasGenerateEnd={handleCanvasGenerateEnd}
             onArchitectureUpdate={handleArchitectureUpdate}
+            onSocketReady={handleSocketReady}
           />
         </section>
 
-        {/* Right Panel: Architecture Canvas */}
-        <section className="relative z-10 flex-1 bg-transparent">
-          <ArchitectureCanvas isGenerating={isGenerating} architecture={architecture} />
+        {/* Right Panel: Tabs */}
+        <section className="relative z-10 flex-1 flex flex-col bg-transparent overflow-hidden">
+
+          {/* Tab Bar */}
+          <div className="flex items-center gap-1 px-4 pt-3 pb-0 border-b border-white/5 bg-black/20 shrink-0">
+            <button
+              onClick={() => setActiveTab("canvas")}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-all border-b-2 -mb-[1px] ${
+                activeTab === "canvas"
+                  ? "text-white border-blue-500 bg-white/5"
+                  : "text-white/40 border-transparent hover:text-white/70 hover:bg-white/5"
+              }`}
+            >
+              <Network size={14} />
+              Architecture
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab("guide");
+                // Auto-trigger if we have architecture but no guide yet
+                if (architecture && !guide && !isGuideLoading) {
+                  handleRequestGuide();
+                }
+              }}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-all border-b-2 -mb-[1px] ${
+                activeTab === "guide"
+                  ? "text-white border-blue-500 bg-white/5"
+                  : "text-white/40 border-transparent hover:text-white/70 hover:bg-white/5"
+              }`}
+            >
+              <BookOpen size={14} />
+              Dev Guide
+              {architecture && !guide && !isGuideLoading && (
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 ml-0.5" />
+              )}
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          <div className="flex-1 overflow-hidden">
+            <div className={activeTab === "canvas" ? "block h-full" : "hidden"}>
+              <ArchitectureCanvas isGenerating={isGenerating} architecture={architecture} />
+            </div>
+            <div className={activeTab === "guide" ? "block h-full" : "hidden"}>
+              <GuidePanel
+                guide={guide}
+                isLoading={isGuideLoading}
+                error={guideError}
+                hasArchitecture={!!architecture}
+                onRequestGuide={handleRequestGuide}
+              />
+            </div>
+          </div>
+
         </section>
       </main>
     </div>
