@@ -5,13 +5,11 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Load .env.local if running standalone
 dotenv.config({ path: path.join(process.cwd(), '.env.local') });
 
 const app = express();
 const port = process.env.PORT || 3001;
 
-// Next.js will run on port 3000
 const FRONTEND_URL = process.env.NEXTAUTH_URL || 'http://localhost:3000';
 
 app.use(cors({ origin: FRONTEND_URL }));
@@ -26,16 +24,25 @@ const io = new Server(httpServer, {
     }
 });
 
+// Total number of interview questions — used to detect the final answer
+const TOTAL_QUESTIONS = 14;
+
 io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
 
-    socket.on('start_interview', async () => {
+    socket.on('start_interview', async (data) => {
         try {
             const { processInterviewStep, clearSession } = await import('./agents/interviewAgent');
-            clearSession(socket.id); // clear any existing session
-            const response = await processInterviewStep(socket.id, null);
+            // Use sessionId from client if provided, otherwise fall back to socket.id
+            const sessionId = data?.sessionId || socket.id;
+            clearSession(sessionId);
+            const response = await processInterviewStep(sessionId, null);
             if (response) {
-                socket.emit('agent_message', { text: response.text, isComplete: response.isComplete, questionData: response.questionData });
+                socket.emit('agent_message', {
+                    text: response.text,
+                    isComplete: response.isComplete,
+                    questionData: response.questionData
+                });
             }
         } catch (error) {
             console.error("Error starting interview:", error);
@@ -49,13 +56,15 @@ io.on('connection', (socket) => {
             const sessionId = data.sessionId || socket.id;
             const messages = data.messages || [];
 
-            // Attempt to restore history first
             restoreSession(sessionId, messages);
 
-            // Attempt to restore or start
-            const response = await processInterviewStep(sessionId, null, true); // true = isRestore
+            const response = await processInterviewStep(sessionId, null, true);
             if (response) {
-                socket.emit('agent_message', { text: response.text, isComplete: response.isComplete, questionData: response.questionData });
+                socket.emit('agent_message', {
+                    text: response.text,
+                    isComplete: response.isComplete,
+                    questionData: response.questionData
+                });
             }
         } catch (error) {
             console.error("Error restoring interview:", error);
@@ -69,28 +78,63 @@ io.on('connection', (socket) => {
             const { processInterviewStep } = await import('./agents/interviewAgent');
             const sessionId = data.sessionId || socket.id;
 
-            // Check if it's the final answer bridging to generation
-            const isJustGenerated = data.text.trim() === ''; // not perfectly robust, but we will pass the architecture straight away
+            // Detect if this is the final answer so we can emit generate_canvas_start
+            // BEFORE awaiting generation (which happens inside processInterviewStep)
+            const isFinalAnswer = data.currentStep >= TOTAL_QUESTIONS;
+            if (isFinalAnswer) {
+                socket.emit('generate_canvas_start');
+                socket.emit('agent_message', {
+                    text: "Great, I have everything I need. Generating your architecture now...",
+                    isComplete: false
+                });
+            }
 
             const response = await processInterviewStep(sessionId, data.text);
+            console.log('processInterviewStep response:', {
+                isComplete: response?.isComplete,
+                hasArchitecture: !!response?.architecture,
+                isUpdate: response?.isUpdate,
+                text: response?.text?.substring(0, 60)
+            });
 
-            if (response) {
-                if (response.isComplete && response.architecture) {
-                    if (!response.isUpdate) {
-                        socket.emit('generate_canvas_start');
-                        socket.emit('agent_message', { text: "Great, I have everything I need. Generating your architecture now...", isComplete: true });
-                    } else {
-                        socket.emit('agent_message', { text: response.text, isComplete: true, questionData: response.questionData });
-                    }
-
-                    socket.emit('generate_canvas_success', response.architecture);
-                } else {
-                    if (response.isComplete && !response.architecture) {
-                        socket.emit('generate_canvas_error');
-                    }
-                    socket.emit('agent_message', { text: response.text, isComplete: response.isComplete, questionData: response.questionData });
-                }
+            if (!response) {
+                console.warn("processInterviewStep returned null");
+                if (isFinalAnswer) socket.emit('generate_canvas_error');
+                return;
             }
+
+            if (response.isComplete && response.architecture) {
+                if (response.isUpdate) {
+                    // Follow-up modification
+                    socket.emit('generate_canvas_start');
+                    socket.emit('agent_message', {
+                        text: response.text,
+                        isComplete: true,
+                        questionData: response.questionData
+                    });
+                }
+                // Emit the architecture data to the canvas
+                socket.emit('generate_canvas_success', response.architecture);
+
+            } else if (response.isComplete && !response.architecture) {
+                // Generation failed
+                console.error("Generation returned isComplete but no architecture");
+                socket.emit('generate_canvas_error');
+                socket.emit('agent_message', {
+                    text: response.text,
+                    isComplete: response.isComplete,
+                    questionData: response.questionData
+                });
+
+            } else {
+                // Normal interview step
+                socket.emit('agent_message', {
+                    text: response.text,
+                    isComplete: response.isComplete,
+                    questionData: response.questionData
+                });
+            }
+
         } catch (error) {
             console.error("Error processing message:", error);
             socket.emit('agent_message', { text: "Error processing your answer." });

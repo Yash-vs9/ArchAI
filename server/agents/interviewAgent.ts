@@ -10,13 +10,19 @@ if (!apiKey) {
 }
 
 const groq = new Groq({ apiKey });
-const MODEL = 'groq/compound-mini';
+
+// Fallback chain — 500k TPD each
+const MODELS = [
+    'llama-3.1-8b-instant',   // primary
+    'llama3-8b-8192',         // fallback 1
+    'mixtral-8x7b-32768',
+  ];
 
 export type InterviewState = {
     userId: string;
     step: number;
     answers: Record<string, string>;
-    messages: any[]; // Store Groq chat history [{role, content}]
+    messages: any[];
     isGenerated: boolean;
     currentArchitecture?: any;
 };
@@ -40,12 +46,117 @@ const QUESTIONS = [
 
 const sessions = new Map<string, InterviewState>();
 
-export async function processInterviewStep(userId: string, userMessage: string | null, isRestore: boolean = false): Promise<{ text: string, isComplete: boolean, answers?: any, architecture?: any, isUpdate?: boolean, questionData?: any } | null> {
+// ─── Groq Helpers ────────────────────────────────────────────────────────────
+
+async function callGroqStream(messages: any[], temperature = 0.7): Promise<string> {
+    let lastError: Error = new Error("All models failed.");
+
+    for (const model of MODELS) {
+        try {
+            console.log(`[Interview] Trying model: ${model}`);
+
+            const stream = await groq.chat.completions.create({
+                messages,
+                model,
+                temperature,
+                stream: true,
+            });
+
+            let fullText = "";
+            for await (const chunk of stream) {
+                fullText += chunk.choices[0]?.delta?.content || "";
+            }
+
+            console.log(`[Interview] Success with model: ${model}`);
+            return fullText;
+
+        } catch (error: any) {
+            lastError = error;
+
+            const isRateLimit = error?.status === 429 || error?.error?.code === 'rate_limit_exceeded';
+            const hasNextModel = MODELS.indexOf(model) < MODELS.length - 1;
+
+            if (isRateLimit && hasNextModel) {
+                console.warn(`[Interview] Rate limit hit on ${model}, falling back...`);
+                continue;
+            }
+
+            throw error;
+        }
+    }
+
+    throw lastError;
+}
+
+async function callGroq(messages: any[], temperature = 0.7): Promise<string> {
+    let lastError: Error = new Error("All models failed.");
+
+    for (const model of MODELS) {
+        try {
+            console.log(`[Interview] Trying model: ${model}`);
+
+            const chatCompletion = await groq.chat.completions.create({
+                messages,
+                model,
+                temperature,
+            });
+
+            const content = chatCompletion.choices[0]?.message?.content || "";
+            console.log(`[Interview] Success with model: ${model}`);
+            return content;
+
+        } catch (error: any) {
+            lastError = error;
+
+            const isRateLimit = error?.status === 429 || error?.error?.code === 'rate_limit_exceeded';
+            const hasNextModel = MODELS.indexOf(model) < MODELS.length - 1;
+
+            if (isRateLimit && hasNextModel) {
+                console.warn(`[Interview] Rate limit hit on ${model}, falling back...`);
+                continue;
+            }
+
+            throw error;
+        }
+    }
+
+    throw lastError;
+}
+
+// ─── Main ────────────────────────────────────────────────────────────────────
+
+export async function processInterviewStep(
+    userId: string,
+    userMessage: string | null,
+    isRestore: boolean = false
+): Promise<{ text: string, isComplete: boolean, answers?: any, architecture?: any, isUpdate?: boolean, questionData?: any } | null> {
+
     let state = sessions.get(userId);
 
     if (isRestore && state && state.step > 0) {
         if (state.isGenerated) return null;
-        const currentQ = QUESTIONS[state.step];
+    
+        // All questions answered but architecture not yet generated — trigger generation
+        if (state.step >= QUESTIONS.length) {
+            state.isGenerated = true;
+            const { generateArchitecture } = await import('./architectureGenerator');
+            try {
+                const architecture = await generateArchitecture(state.answers);
+                state.currentArchitecture = architecture;
+                return {
+                    text: "Welcome back! Your architecture has been generated.",
+                    isComplete: true,
+                    answers: state.answers,
+                    architecture,
+                    isUpdate: false
+                };
+            } catch (e) {
+                state.isGenerated = false;
+                return { text: "Welcome back! There was an error generating your architecture. Please try again.", isComplete: true };
+            }
+        }
+    
+        const currentQ = QUESTIONS[state.step]; // now safe
         return {
             text: `Welcome back! Let's continue. ${currentQ.q}`,
             isComplete: false,
@@ -66,21 +177,19 @@ export async function processInterviewStep(userId: string, userMessage: string |
         sessions.set(userId, state);
     }
 
+    // Post-generation: handle follow-up modification requests
     if (state.isGenerated) {
         const { updateArchitecture } = await import('./architectureGenerator');
         try {
             const updated = await updateArchitecture(state.currentArchitecture, userMessage || "");
             state.currentArchitecture = updated;
 
-            state.messages.push({ role: 'user', content: `The user requested: "${userMessage}". The architecture has been updated accordingly. Provide a brief 1-2 sentence confirmation to the user acknowledging the change.` });
-
-            const chatCompletion = await groq.chat.completions.create({
-                messages: state.messages,
-                model: MODEL,
-                temperature: 0.7
+            state.messages.push({
+                role: 'user',
+                content: `The user requested: "${userMessage}". The architecture has been updated accordingly. Provide a brief 1-2 sentence confirmation to the user acknowledging the change.`
             });
 
-            const agentReply = chatCompletion.choices[0]?.message?.content || "Diagram updated.";
+            const agentReply = await callGroq(state.messages, 0.7);
             state.messages.push({ role: 'assistant', content: agentReply });
 
             return {
@@ -95,12 +204,14 @@ export async function processInterviewStep(userId: string, userMessage: string |
         }
     }
 
+    // Record previous answer
     if (userMessage && state.step > 0 && state.step <= QUESTIONS.length) {
         const prevQ = QUESTIONS[state.step - 1];
         state.answers[prevQ.key] = userMessage;
         state.messages.push({ role: 'user', content: userMessage });
     }
 
+    // All questions answered — generate architecture
     if (state.step >= QUESTIONS.length) {
         state.isGenerated = true;
         const { generateArchitecture } = await import('./architectureGenerator');
@@ -116,37 +227,23 @@ export async function processInterviewStep(userId: string, userMessage: string |
                 isUpdate: false
             };
         } catch (e) {
+            state.isGenerated = false; // allow retry
+            console.error("Architecture generation error:", e);
             return { text: "Error generating the diagram.", isComplete: true };
         }
     }
 
+    // Ask next interview question
     const currentQ = QUESTIONS[state.step];
-    let systemPrompt = "";
-    if (state.step === 0) {
-        systemPrompt = `Ask the first question: "${currentQ.q}"`;
-    } else {
-        systemPrompt = `Acknowledge my answer briefly, then ask the next question: "${currentQ.q}"`;
-    }
+    const systemPrompt = state.step === 0
+        ? `Ask the first question: "${currentQ.q}"`
+        : `Acknowledge my answer briefly, then ask the next question: "${currentQ.q}"`;
 
-    // append system prompt implicitly by just adding a user message to drive the agent
     state.messages.push({ role: 'user', content: systemPrompt });
 
     try {
-        const stream = await groq.chat.completions.create({
-            messages: state.messages,
-            model: MODEL,
-            temperature: 0.7,
-            stream: true,
-        });
-
+        const fullText = await callGroqStream(state.messages, 0.7);
         state.step++;
-
-        let fullText = "";
-        for await (const chunk of stream) {
-            fullText += chunk.choices[0]?.delta?.content || "";
-        }
-
-        // save agent turn
         state.messages.push({ role: 'assistant', content: fullText });
 
         return {
@@ -156,8 +253,7 @@ export async function processInterviewStep(userId: string, userMessage: string |
         };
     } catch (e) {
         console.error("Groq API Error:", e);
-        // pop last prompt to avoid stacking errors
-        state.messages.pop();
+        state.messages.pop(); // remove the failed prompt to avoid stacking
 
         return {
             text: "Error communicating with AI. Please check your GROQ_API_KEY in .env.local and try again.",
@@ -195,7 +291,7 @@ export function restoreSession(userId: string, frontendMessages: any[]) {
                     answers[qKey] = msg.text;
                     step++;
                 }
-            } else if (msg.role === "agent" && msg.text.includes("Generating your architecture")) {
+            } else if (msg.role === "agent" && msg.text.includes("architecture has been generated")) {
                 isGenerated = true;
             }
         }
