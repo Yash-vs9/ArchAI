@@ -85,12 +85,16 @@ io.on('connection', (socket) => {
 
                     socket.emit('generate_canvas_success', response.architecture);
                 } else {
+                    if (response.isComplete && !response.architecture) {
+                        socket.emit('generate_canvas_error');
+                    }
                     socket.emit('agent_message', { text: response.text, isComplete: response.isComplete, questionData: response.questionData });
                 }
             }
         } catch (error) {
             console.error("Error processing message:", error);
             socket.emit('agent_message', { text: "Error processing your answer." });
+            socket.emit('generate_canvas_error');
         }
     });
 

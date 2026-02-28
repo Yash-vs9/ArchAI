@@ -1,7 +1,7 @@
 "use client";
 
 import { useSession, signIn, signOut } from "next-auth/react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import ChatPanel from "@/components/chat/ChatPanel";
 import ArchitectureCanvas from "@/components/canvas/ArchitectureCanvas";
 import { motion } from "framer-motion";
@@ -12,7 +12,9 @@ import { ParticlesBackground } from "@/components/ui/ParticlesBackground";
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const [isGenerating, setIsGenerating] = useState(false);
-
+  const handleCanvasGenerateStart = useCallback(() => setIsGenerating(true), []);
+  const handleCanvasGenerateEnd = useCallback(() => setIsGenerating(false), []);
+  
   if (status === "loading") {
     return (
       <div className="flex h-screen items-center justify-center bg-black">
@@ -124,7 +126,10 @@ export default function DashboardPage() {
 
         {/* Left Panel: Chat Interview */}
         <section className="relative z-10 w-full md:w-[400px] lg:w-[450px] border-r border-white/5 bg-black/40 backdrop-blur-xl flex flex-col shadow-2xl">
-          <ChatPanel onCanvasGenerateStart={() => setIsGenerating(true)} />
+        <ChatPanel
+  onCanvasGenerateStart={handleCanvasGenerateStart}
+  onCanvasGenerateEnd={handleCanvasGenerateEnd}
+/>
         </section>
 
         {/* Right Panel: Architecture Canvas */}

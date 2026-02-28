@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { io, Socket } from "socket.io-client";
-import { Bot, User, CheckCircle2 } from "lucide-react";
+import { Bot, User, CheckCircle2, Plus } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SelectCards, MultiSelectChips, SliderInput, StepperInput, ToggleSwitch, TextareaInput } from "./forms/DynamicInputs";
 
@@ -13,7 +13,7 @@ type QuestionData = {
     options?: string[];
 };
 
-export default function ChatPanel({ onCanvasGenerateStart }: { onCanvasGenerateStart: () => void }) {
+export default function ChatPanel({ onCanvasGenerateStart, onCanvasGenerateEnd }: { onCanvasGenerateStart: () => void, onCanvasGenerateEnd?: () => void }) {
     const [messages, setMessages] = useState<{ id: string; role: "agent" | "user"; text: string }[]>([]);
     const [isConnected, setIsConnected] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
@@ -78,6 +78,14 @@ export default function ChatPanel({ onCanvasGenerateStart }: { onCanvasGenerateS
             onCanvasGenerateStart();
         });
 
+        socket.on("generate_canvas_success", () => {
+            onCanvasGenerateEnd?.();
+        });
+
+        socket.on("generate_canvas_error", () => {
+            onCanvasGenerateEnd?.();
+        });
+
         socket.on("disconnect", () => {
             setIsConnected(false);
         });
@@ -85,7 +93,7 @@ export default function ChatPanel({ onCanvasGenerateStart }: { onCanvasGenerateS
         return () => {
             socket.disconnect();
         };
-    }, [onCanvasGenerateStart]);
+    }, [onCanvasGenerateStart, onCanvasGenerateEnd]);
 
     useEffect(() => {
         if (!currentQuestion) {
@@ -195,6 +203,17 @@ export default function ChatPanel({ onCanvasGenerateStart }: { onCanvasGenerateS
                         </div>
                     </div>
                 </div>
+                <button
+                    onClick={() => {
+                        localStorage.removeItem("archai_session");
+                        localStorage.removeItem("archai_messages");
+                        window.location.reload();
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white/70 hover:text-white bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 rounded-md transition-colors"
+                >
+                    <Plus size={14} />
+                    New Project
+                </button>
             </div>
 
             {/* Messages */}
