@@ -2,13 +2,14 @@
   "name": "arch-ai",
   "version": "0.1.0",
   "private": true,
-  "scripts": {
+ "scripts": {
     "dev": "next dev",
     "dev:all": "concurrently \"npm run dev\" \"npx ts-node -O '{\\\"module\\\":\\\"commonjs\\\"}' server/index.ts\"",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
-  },
+    "lint": "eslint",
+    "start:server": "npx ts-node -O '{\"module\":\"commonjs\"}' server/index.ts"
+},
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@reactflow/node-resizer": "^2.2.14",

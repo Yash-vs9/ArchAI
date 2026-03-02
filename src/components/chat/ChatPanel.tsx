@@ -49,7 +49,7 @@ const [isArchitectureGenerated, setIsArchitectureGenerated] = useState(false);
             localStorage.setItem("archai_session", sessionId);
         }
 
-        const socket = io("http://localhost:3001", {
+        const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001", {
             query: { sessionId }
         });
         socketRef.current = socket;
