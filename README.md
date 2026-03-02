@@ -1,4 +1,4 @@
-# DevArchitect AI 🏗️
+# Arch AI 🏗️
 
 > From idea to architecture, instantly.
 
