@@ -4,7 +4,6 @@
 
 DevArchitect AI is an AI-powered system architecture designer. Describe your project in plain English, answer a structured 14-question interview, and get a complete interactive visual architecture diagram, a full implementation guide, a live cost estimate, and a scaffolded GitHub repository — in under 5 minutes.
 
-🌐 **Live Demo:** [arch-ai-murex.vercel.app](https://arch-ai-murex.vercel.app)
 
 ---
 
