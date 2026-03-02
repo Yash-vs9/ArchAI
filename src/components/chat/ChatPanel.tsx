@@ -29,7 +29,8 @@ export default function ChatPanel({ onCanvasGenerateStart, onCanvasGenerateEnd, 
 
     const socketRef = useRef<Socket | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
-
+// Add state near the top with other useState calls
+const [isArchitectureGenerated, setIsArchitectureGenerated] = useState(false);
     // Load history from localStorage on mount
     useEffect(() => {
         const storedSess = localStorage.getItem("archai_session");
@@ -87,6 +88,8 @@ export default function ChatPanel({ onCanvasGenerateStart, onCanvasGenerateEnd, 
         socket.on("generate_canvas_success", (data: any) => {
             onCanvasGenerateEnd?.();
             onArchitectureUpdate?.(data);
+            setIsArchitectureGenerated(true); // 👈 add this
+
         });
 
         socket.on("generate_canvas_error", () => {
@@ -299,7 +302,7 @@ export default function ChatPanel({ onCanvasGenerateStart, onCanvasGenerateEnd, 
             </AnimatePresence>
 
             {/* Basic Text Input Fallback (for follow-ups when active question is null) */}
-            {!currentQuestion && !isTyping && messages.length > 0 && messages[messages.length - 1].text.includes("generated") && (
+            {!currentQuestion && !isTyping && isArchitectureGenerated && (
                 <div className="p-4 border-t border-white/5 bg-black/40">
                     <form onSubmit={(e) => {
                         e.preventDefault();

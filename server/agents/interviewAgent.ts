@@ -18,13 +18,14 @@ const MODELS = [
     'mixtral-8x7b-32768',
   ];
 
-export type InterviewState = {
+  export type InterviewState = {
     userId: string;
     step: number;
     answers: Record<string, string>;
     messages: any[];
     isGenerated: boolean;
     currentArchitecture?: any;
+    cachedGuide?: string;  // 👈 add this
 };
 
 const QUESTIONS = [
