@@ -83,8 +83,6 @@ npm install
 ```env
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=your_secret_here
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
 GROQ_API_KEY=your_groq_api_key
 MONGODB_URI=your_mongodb_uri
 ```
